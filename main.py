@@ -8,7 +8,7 @@ from translator import translate_text_gemini
 from voice_synthesizer import synthesize_text_coqui, adjust_audio_speed_ffmpeg
 import json
 import torch
-import shutil # Added for cleaning output directory
+import shutil
 
 load_dotenv()
 
@@ -29,7 +29,7 @@ def main():
     demucs_model_name = args.demucs_model
     whisper_model_name = args.whisper_model
     transcribe_lang_whisper = args.transcribe_language
-    target_language_code = args.target_language # Used for both translation and TTS language parameter
+    target_language_code = args.target_language
     reference_voice_path_str = args.reference_voice_for_cloning
     coqui_tts_model_name = args.tts_model
     
@@ -78,15 +78,14 @@ def main():
         print(f"Error during ffmpeg audio extraction: {e}")
         return
 
-    vocals_output_path = output_directory / f"{video_file.stem}_vocals.wav" # Demucs output for vocals
-    background_output_path = output_directory / f"{video_file.stem}_background.wav" # Demucs output for non-vocals
+    vocals_output_path = output_directory / f"{video_file.stem}_vocals.wav"
+    background_output_path = output_directory / f"{video_file.stem}_background.wav"
 
     try:
         print(f"Step 2: Separating vocals from {raw_audio_path} using Demucs model: {demucs_model_name} on {device}...")
-        # Note: separate_vocals_demucs_lib will save vocals to vocals_output_path and others to background_output_path
         separate_vocals_demucs_lib(str(raw_audio_path), 
-                                   str(vocals_output_path), # Path to save vocals
-                                   str(background_output_path), # Path to save other sounds
+                                   str(vocals_output_path),
+                                   str(background_output_path),
                                    model_name=demucs_model_name,
                                    device=device)
         print(f"Successfully separated audio using Demucs.")
@@ -97,9 +96,7 @@ def main():
              return
         if not background_output_path.exists():
             print(f"Warning: Background (no_vocals) file not found at {background_output_path}. Speed adjustment for TTS might be affected or use raw audio duration.")
-            # We will need a duration target. If background is missing, maybe fall back to raw_audio_path for duration.
-            # For now, we'll rely on it being present for duration matching.
-            # Or let get_audio_duration handle the error if the file is missing.
+
 
     except Exception as e:
         print(f"Error during Demucs vocal separation: {e}")
@@ -114,11 +111,11 @@ def main():
         transcription_result = transcribe_audio_whisper(str(vocals_output_path), 
                                                       model_name=whisper_model_name, 
                                                       device=device,
-                                                      language=transcribe_lang_whisper) # Pass language here
+                                                      language=transcribe_lang_whisper)
         
         if transcription_result and "text" in transcription_result and transcription_result["text"].strip():
             transcribed_text_content = transcription_result["text"]
-            detected_language_whisper = transcription_result.get("language") # Whisper provides short lang codes e.g. "en", "tr"
+            detected_language_whisper = transcription_result.get("language")
             print(f"Successfully transcribed audio using Whisper.")
             print(f"  Detected language by Whisper: {detected_language_whisper}")
             print(f"  Transcription (first 100 chars): \\n{transcribed_text_content[:100]}...")
@@ -137,18 +134,15 @@ def main():
 
     translated_text_content = None
     if transcribed_text_content:
-        # Ensure target_language_code is lowercase for filename consistency, though it should be already if user follows help text.
         safe_target_lang_code_for_filename = target_language_code.lower().replace(' ', '_') 
         translation_output_filename = f"{video_file.stem}_translated_to_{safe_target_lang_code_for_filename}.txt"
         translation_output_path = output_directory / translation_output_filename
-        # Whisper gives short codes (e.g., "en", "tr"). Gemini works best with language names or codes.
-        # We can pass the detected language code from Whisper directly if available.
         source_lang_for_gemini = detected_language_whisper if detected_language_whisper else None 
 
         try:
             print(f"Step 4: Translating text to \'{target_language_code}\' using Gemini (Source lang for prompt: {source_lang_for_gemini or 'auto-detect'})...")
             translated_text_content = translate_text_gemini(transcribed_text_content, 
-                                                target_language=target_language_code, # Target language for Gemini
+                                                target_language=target_language_code,
                                                 source_language=source_lang_for_gemini)
             
             if translated_text_content:
@@ -159,18 +153,17 @@ def main():
                 print(f"  Full translated text saved to: {translation_output_path}")
             else:
                 print(f"Gemini translation failed or returned no text. Skipping TTS.")
-                return # Cannot proceed to TTS without translated text
+                return
 
         except Exception as e:
             print(f"An error occurred during Gemini translation: {e}")
             print("Please ensure GEMINI_API_KEY is set in .env and valid, and 'google-genai' is installed.")
-            return # Cannot proceed to TTS
+            return
     else:
         print("Skipping translation and TTS steps as there was no transcribed text available.")
         return
 
     if translated_text_content:
-        # Ensure target_language_code is lowercase for filename consistency
         safe_target_lang_code_for_filename = target_language_code.lower()
         synthesized_audio_filename = f"{video_file.stem}_synthesized_to_{safe_target_lang_code_for_filename}.wav"
         synthesized_audio_path = output_directory / synthesized_audio_filename
@@ -183,7 +176,7 @@ def main():
             synthesis_successful = synthesize_text_coqui(
                 text_to_synthesize=translated_text_content,
                 output_wav_path_str=str(synthesized_audio_path),
-                target_language=target_language_code, # XTTS expects language code (e.g., 'en', 'tr')
+                target_language=target_language_code,
                 reference_wav_path_str=str(ref_voice_path),
                 model_name=coqui_tts_model_name,
                 device=device
@@ -193,9 +186,6 @@ def main():
                 return
             print(f"Successfully synthesized audio to: {synthesized_audio_path}")
 
-            # Step 6: Adjust synthesized audio speed to match background track duration
-            # We use background_output_path (no_vocals.wav) as the reference for duration.
-            # If background_output_path doesn't exist, this will fail.
             print(f"Step 6: Adjusting speed of synthesized audio ({synthesized_audio_path}) to match duration of background audio ({background_output_path})...")
             
             target_duration_audio_path = background_output_path
@@ -236,4 +226,4 @@ def main():
     print("All processing steps complete.")
 
 if __name__ == "__main__":
-    main() 
+    main()

@@ -1,11 +1,11 @@
 from pathlib import Path
 import subprocess
 from TTS.api import TTS
-import torch # For checking cuda availability and selecting device
-from TTS.tts.configs.xtts_config import XttsConfig # Added for safe globals
-from TTS.tts.models.xtts import XttsAudioConfig, XttsArgs # Added for safe globals
-from TTS.config.shared_configs import BaseDatasetConfig # Added for safe globals
-import torch.serialization # Added for safe globals
+import torch
+from TTS.tts.configs.xtts_config import XttsConfig
+from TTS.tts.models.xtts import XttsAudioConfig, XttsArgs
+from TTS.config.shared_configs import BaseDatasetConfig
+import torch.serialization
 
 DEFAULT_TTS_MODEL = "tts_models/multilingual/multi-dataset/xtts_v2"
 
@@ -15,11 +15,7 @@ def synthesize_text_coqui(text_to_synthesize: str,
                             reference_wav_path_str: str = None,
                             model_name: str = DEFAULT_TTS_MODEL,
                             device: str = "cuda"):
-    """
-    Synthesizes speech from text using Coqui TTS, optionally cloning a reference voice.
-    """
-    # Add necessary XTTS classes to safe globals to handle PyTorch 2.6+ loading issue
-    # This needs to be done before TTS model loading attempt.
+    
     if hasattr(torch, "serialization") and hasattr(torch.serialization, "add_safe_globals"):
         safe_globals_to_add = [XttsConfig, XttsAudioConfig, BaseDatasetConfig, XttsArgs]
         torch.serialization.add_safe_globals(safe_globals_to_add)
@@ -40,16 +36,11 @@ def synthesize_text_coqui(text_to_synthesize: str,
         print("TTS Info: CPU will be used for Coqui TTS.")
 
     try:
-        # Initialize TTS model without gpu parameter, then move to device
+        
         tts = TTS(model_name=model_name, progress_bar=True)
-        tts.to(actual_device) # Move model to the selected device (cuda or cpu)
+        tts.to(actual_device)
         print(f"TTS Info: Model {model_name} loaded on {actual_device}.")
         
-        # Validate language code for XTTS v2 explicitly
-        # Supported languages by xtts_v2 model as per error message and common knowledge:
-        # ['en', 'es', 'fr', 'de', 'it', 'pt', 'pl', 'tr', 'ru', 'nl', 'cs', 'ar', 'zh-cn', 'hu', 'ko', 'ja', 'hi']
-        # We will assume target_language is already in the correct short code format (e.g., "tr")
-        # based on planned changes in main.py
         supported_xtts_languages = ['en', 'es', 'fr', 'de', 'it', 'pt', 'pl', 'tr', 'ru', 'nl', 'cs', 'ar', 'zh-cn', 'hu', 'ko', 'ja', 'hi']
         if target_language.lower() not in supported_xtts_languages:
             print(f"TTS Error: Language code '{target_language}' is not in the supported list for XTTS v2: {supported_xtts_languages}")
@@ -84,9 +75,7 @@ def synthesize_text_coqui(text_to_synthesize: str,
 def adjust_audio_speed_ffmpeg(input_audio_path_str: str, 
                                 output_audio_path_str: str, 
                                 target_duration_seconds: float):
-    """
-    Adjusts the speed of an audio file to match a target duration using ffmpeg.
-    """
+    
     input_audio_path = Path(input_audio_path_str)
     output_audio_path = Path(output_audio_path_str)
     output_audio_path.parent.mkdir(parents=True, exist_ok=True)
@@ -96,7 +85,7 @@ def adjust_audio_speed_ffmpeg(input_audio_path_str: str,
         return False
     
     try:
-        # Get duration of the synthesized audio first
+        
         probe_command = [
             "ffprobe", "-v", "error", "-show_entries", "format=duration",
             "-of", "default=noprint_wrappers=1:nokey=1", str(input_audio_path)
@@ -112,16 +101,10 @@ def adjust_audio_speed_ffmpeg(input_audio_path_str: str,
             return False
 
         speed_factor = current_duration / target_duration_seconds
-        # ffmpeg atempo filter accepts values between 0.5 and 100.0. 
-        # If speed_factor is outside this, we might need to chain atempo filters or cap it.
-        # For simplicity, let's warn and cap for now.
         if not (0.5 <= speed_factor <= 100.0):
-             # If we need to go beyond, multiple atempo filters are needed: e.g., atempo=2.0,atempo=2.0 for 4x
-             # Or atempo=0.5,atempo=0.5 for 0.25x
-             # This simple implementation will cap it and might not reach the target duration exactly if extreme scaling is needed.
             print(f"Warning: Required speed factor {speed_factor:.2f} is outside ffmpeg's direct atempo range [0.5, 100.0]. Capping speed factor.")
             print("         The final audio duration might not exactly match the target duration.")
-            speed_factor = max(0.5, min(100.0, speed_factor)) # Cap the factor
+            speed_factor = max(0.5, min(100.0, speed_factor))
 
         ffmpeg_command = [
             "ffmpeg", "-i", str(input_audio_path),
@@ -147,25 +130,20 @@ def adjust_audio_speed_ffmpeg(input_audio_path_str: str,
         return False
 
 if __name__ == '__main__':
-    # Basic test for voice_synthesizer.py
-    # Ensure you have a .env file if your TTS model requires API keys (Coqui XTTS usually doesn't for local use)
-    # and that Coqui TTS is installed (pip install TTS)
+    
+    
     print("Testing Voice Synthesizer...")
-    test_text = "Merhaba, bu Coqui TTS ile yapılmış bir test seslendirmesidir."
-    target_lang_code = "tr" # Turkish
+    test_text = "Hello, this is a test voiceover made with Coqui TTS."
+    target_lang_code = "en"
     temp_synth_path = Path("output/temp_synthesized_audio.wav")
     final_adjusted_path = Path("output/final_adjusted_audio.wav")
-    
-    # Path to a short, clean reference audio for voice cloning (e.g., 5-15 seconds).
-    # Replace with an actual path to your .wav file if testing cloning.
-    # example_reference_voice = Path("path/to/your/reference_voice.wav") 
-    example_reference_voice = None # Set to a path to test cloning
+    example_reference_voice = None
 
     if synthesize_text_coqui(test_text, str(temp_synth_path), target_lang_code, 
                              reference_wav_path_str=str(example_reference_voice) if example_reference_voice else None,
-                             device="cpu"): # Forcing CPU for this direct test for wider compatibility
+                             device="cpu"):
         print("Initial synthesis successful.")
-        target_dur = 5.0 # Target duration in seconds for speed adjustment test
+        target_dur = 5.0
         if adjust_audio_speed_ffmpeg(str(temp_synth_path), str(final_adjusted_path), target_dur):
             print(f"Speed adjustment successful. Final audio at: {final_adjusted_path}")
         else:

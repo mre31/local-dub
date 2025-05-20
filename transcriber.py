@@ -1,6 +1,6 @@
 import whisper
 
-def transcribe_audio_whisper(audio_path_str: str, model_name: str = "base", device: str = "cuda"):
+def transcribe_audio_whisper(audio_path_str: str, model_name: str = "base", device: str = "cuda", language: str = None):
     """
     Transcribes the given audio file using OpenAI Whisper.
 
@@ -8,6 +8,7 @@ def transcribe_audio_whisper(audio_path_str: str, model_name: str = "base", devi
         audio_path_str: Path to the audio file (e.g., vocals.wav).
         model_name: Name of the Whisper model to use (e.g., "tiny", "base", "small", "medium", "large").
         device: The device to use for computation ("cuda" or "cpu").
+        language: The language of the audio. If None, Whisper will attempt to auto-detect.
 
     Returns:
         A dictionary containing the transcription results (e.g., text, segments, language).
@@ -25,8 +26,17 @@ def transcribe_audio_whisper(audio_path_str: str, model_name: str = "base", devi
         # unless specific performance tuning is required.
         # To make it strictly conditional: result = model.transcribe(audio_path_str, fp16=use_fp16)
         
-        result = model.transcribe(audio_path_str, fp16=False) # Keeping fp16=False for general compatibility
+        # Transcribe, passing the language parameter if provided.
+        # If language is None, Whisper will perform auto-detection.
+        transcribe_options = {"fp16": False} # Keeping fp16=False for general compatibility
+        if language:
+            transcribe_options["language"] = language
+            print(f"Whisper Info: Transcribing with specified language: {language}")
+        else:
+            print("Whisper Info: Transcribing with language auto-detection.")
+
+        result = model.transcribe(audio_path_str, **transcribe_options)
         return result
     except Exception as e:
-        print(f"Error during Whisper transcription (model: {model_name}, device: {device}): {e}")
+        print(f"Error during Whisper transcription (model: {model_name}, device: {device}, language: {language}): {e}")
         return None 

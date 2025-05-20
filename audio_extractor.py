@@ -2,6 +2,7 @@ import subprocess
 from pathlib import Path
 import torch
 from demucs.api import Separator, save_audio
+import json # For ffprobe output parsing
 
 def extract_audio_ffmpeg(video_path_str: str, output_audio_path_str: str):
     video_path = Path(video_path_str)
@@ -46,3 +47,29 @@ def separate_vocals_demucs_lib(input_audio_path_str: str,
             background_tensor += stem_tensor
             
     save_audio(background_tensor, str(background_output_path), samplerate=separator.samplerate)
+
+def get_audio_duration(audio_path_str: str) -> float | None:
+    """Gets the duration of an audio file using ffprobe."""
+    audio_path = Path(audio_path_str)
+    if not audio_path.exists():
+        print(f"Error: Audio file not found for duration check: {audio_path}")
+        return None
+    command = [
+        "ffprobe",
+        "-v", "error",
+        "-show_entries", "format=duration",
+        "-of", "default=noprint_wrappers=1:nokey=1",
+        str(audio_path)
+    ]
+    try:
+        result = subprocess.run(command, check=True, capture_output=True, text=True, encoding='utf-8')
+        return float(result.stdout.strip())
+    except subprocess.CalledProcessError as e:
+        print(f"Error getting duration with ffprobe for {audio_path}: {e}\nStderr: {e.stderr}")
+        return None
+    except FileNotFoundError:
+        print("Error: ffprobe command not found. Please ensure ffmpeg (which includes ffprobe) is installed and in PATH.")
+        return None
+    except ValueError as e:
+        print(f"Error parsing duration from ffprobe output for {audio_path}: {e}\nStdout: {result.stdout}")
+        return None

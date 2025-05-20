@@ -2,4 +2,4 @@ venv
 demo/
 __pycache__/
 .env
-output/
+output*
